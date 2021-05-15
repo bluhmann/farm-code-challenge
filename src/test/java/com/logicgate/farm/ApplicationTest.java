@@ -48,10 +48,20 @@ public class ApplicationTest {
   @Test
   public void addAnimalsToFarm() {
     animalService.addToFarm(IntStream.range(0, ANIMAL_SEED)
-        .mapToObj(value -> new Animal(FarmUtils.animalName(value), FarmUtils.randomColor()))
-        .collect(Collectors.toList()));
+      .mapToObj(value -> new Animal(FarmUtils.animalName(value), FarmUtils.randomColor()))
+      .collect(Collectors.toList()));
 
     checkAnimals(ANIMAL_SEED);
+  }
+
+  @Test
+  public void addAnimalsToFarm_partial() {
+    int num = 90;
+    animalService.addToFarm(IntStream.range(0, num)
+      .mapToObj(value -> new Animal(FarmUtils.animalName(value), Color.RED))
+      .collect(Collectors.toList()));
+
+    checkAnimals(num);
   }
 
   @Test
