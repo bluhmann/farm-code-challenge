@@ -12,5 +12,6 @@ import java.util.List;
 public interface BarnRepository extends JpaRepository<Barn, Long> {
 
   List<Barn> findByColorOrderByNameAsc(Color color);
+  List<Barn> findByColorOrderByNameDesc(Color color);
 
 }
