@@ -53,7 +53,7 @@ public class AnimalServiceImpl implements AnimalService {
     // This is the case we normally expect, we have at least one animal with this favorite color, so we need to work out
     // where the new animal will fit into the existing barns
     List<Barn> compatibleBarns = this.barnRepository.findByColorOrderByNameAsc(favoriteColor);
-    if (this.extraBarnRequired(existingAnimals, compatibleBarns)) {
+    if (existingAnimals.size() % 20 == 0) {
       // New barn and redistribution needed
       Barn newBarn = this.createBarn(favoriteColor, compatibleBarns.size());
       compatibleBarns.add(newBarn);
