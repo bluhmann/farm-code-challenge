@@ -3,7 +3,6 @@ package com.logicgate.farm.service;
 import com.logicgate.farm.domain.Animal;
 import com.logicgate.farm.domain.Barn;
 import com.logicgate.farm.domain.Color;
-import com.logicgate.farm.factories.BarnFactory;
 import com.logicgate.farm.repository.AnimalRepository;
 import com.logicgate.farm.repository.BarnRepository;
 
@@ -40,15 +39,14 @@ public class AnimalServiceImpl implements AnimalService {
   }
 
   @Override
+  @Transactional
   public Animal addToFarm(Animal animal) {
     Color favoriteColor = animal.getFavoriteColor();
     List<Animal> existingAnimals = this.animalRepository.findByFavoriteColor(favoriteColor);
     if (existingAnimals.size() == 0) {
       // We have no animals yet with this favorite color, so create a barn and add the animal
-      Barn newBarn = BarnFactory.createNewBarnForColor(favoriteColor, 0);
+      Barn newBarn = this.createBarn(favoriteColor, 0);
       animal.setBarn(newBarn);
-
-      this.barnRepository.save(newBarn);
       return this.animalRepository.save(animal);
     }
 
@@ -57,18 +55,20 @@ public class AnimalServiceImpl implements AnimalService {
     List<Barn> compatibleBarns = this.barnRepository.findByColorOrderByNameAsc(favoriteColor);
     if (this.extraBarnRequired(existingAnimals, compatibleBarns)) {
       // New barn and redistribution needed
-      Barn newBarn = BarnFactory.createNewBarnForColor(favoriteColor, compatibleBarns.size());
-      // Need to use the return value so the barns assigned to the animals have the ID field filled out
-      newBarn = this.barnRepository.save(newBarn);
+      Barn newBarn = this.createBarn(favoriteColor, compatibleBarns.size());
       compatibleBarns.add(newBarn);
       this.distributeAnimals(existingAnimals, compatibleBarns);
 
       // We now need to set the barn on the animal before finally saving and returning the persistened entity
+      // This could probably be handled by adding `animal` to the `existingAnimals` List, however that combines two jobs
+      // into one method: redistributing the existing animals between the barns, and assigning and saving the new
+      // animal, so I think it's better to keep them separate
       int barnIndex = this.getIndexOfBarnForAnimal(existingAnimals.size(), compatibleBarns.size());
       Barn animalBarn = compatibleBarns.get(barnIndex);
       animal.setBarn(animalBarn);
     } else {
-      // Map the entries to a sorted list
+      // In this scenario, we are just adding a new animal but need no additional barns, so we construct a sorted list
+      // of barn capacities, and assign the animal to the first barn in the list
       List<Map.Entry<Barn, Long>> sortedEntries = this.getSortedBarnCapacities(existingAnimals);
 
       // sortedEntries is now a list of Map.Entries, with the Key being the barn and value being the capacity of that
@@ -81,17 +81,18 @@ public class AnimalServiceImpl implements AnimalService {
   }
 
   @Override
+  @Transactional
   public void addToFarm(List<Animal> animals) {
     animals.forEach(this::addToFarm);
   }
 
   @Override
+  @Transactional
   public void removeFromFarm(Animal animal) {
     if (!this.animalRepository.existsById(animal.getId())) {
       // Do nothing if the animal doesn't exist
       return;
     }
-
     this.animalRepository.delete(animal);
 
     // We now need to deal with deleting barns and redistributing animals (if necessary)
@@ -101,7 +102,8 @@ public class AnimalServiceImpl implements AnimalService {
       this.barnRepository.delete(animal.getBarn());
     } else if (remainingAnimals.size() % 20 == 0) {
       // In this case, we have moved from having 21 to 20 animals (or 41 to 40, etc.), so we need to delete a barn
-      // and redistribute the animals
+      // and redistribute the animals. We retrieve them in descending name order, so the last barn added will be the
+      // first barn in the list to make deleting easy
       List<Barn> barns = this.barnRepository.findByColorOrderByNameDesc(animal.getFavoriteColor());
       Barn barnToDelete = barns.get(0);
       barns.remove(barnToDelete);
@@ -133,6 +135,7 @@ public class AnimalServiceImpl implements AnimalService {
   }
 
   @Override
+  @Transactional
   public void removeFromFarm(List<Animal> animals) {
     animals.forEach(animal -> removeFromFarm(animalRepository.getOne(animal.getId())));
   }
@@ -147,6 +150,7 @@ public class AnimalServiceImpl implements AnimalService {
             Collectors.counting()
           )
         );
+
     // Map the entries to a sorted list
     return barnCapacities
       .entrySet()
@@ -175,5 +179,10 @@ public class AnimalServiceImpl implements AnimalService {
 
   private int getIndexOfBarnForAnimal(int animalIndex, int numOfBarns) {
     return animalIndex % numOfBarns;
+  }
+
+  private Barn createBarn(Color favoriteColor, int barnNumber) {
+    Barn newBarn = new Barn(String.format("%s-%d", favoriteColor.toString(), barnNumber), favoriteColor);
+    return this.barnRepository.save(newBarn);
   }
 }
